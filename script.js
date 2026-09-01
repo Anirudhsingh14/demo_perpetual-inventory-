@@ -16,34 +16,36 @@ const supabaseClient = window.supabase.createClient(
     SUPABASE_KEY
 );
 
-let currentRows = [];
-
-let submissions =
-    JSON.parse(
-        localStorage.getItem("kiaPI_submissions")
-    ) || [];
+let submissions = [];
 
 
 /* =========================================================
    INITIALIZATION
 ========================================================= */
 
-document.addEventListener("DOMContentLoaded", function () {
+document.addEventListener(
+    "DOMContentLoaded",
+    async function () {
 
-    document.getElementById("piDate").value =
-        getToday();
+        document.getElementById(
+            "piDate"
+        ).value = getToday();
 
-    for (let i = 0; i < 4; i++) {
-        addRow();
+        for (
+            let i = 0;
+            i < 4;
+            i++
+        ) {
+            addRow();
+        }
+
+        updateSummary();
+
+        // LOAD HISTORY FROM SUPABASE
+        await loadSubmissionsFromSupabase();
+
     }
-
-    updateSummary();
-
-    updateDealerFilter();
-
-    renderDashboard();
-
-});
+);
 
 
 /* =========================================================
@@ -832,55 +834,131 @@ function createSubmissionObject() {
    SUBMIT TO HO
 ========================================================= */
 
-function submitToHO() {
+async function submitToHO() {
 
     if (!validateForm())
         return;
 
-
     const submission =
         createSubmissionObject();
 
+    // SAVE SUBMISSION TO SUPABASE
+    const { data, error } =
+        await supabaseClient
+            .from("submissions")
+            .insert([
+                {
+                    id: submission.id,
+                    pi_date: submission.piDate,
+                    submission_date: submission.submissionDate,
+                    dealer_code: submission.dealerCode,
+                    dealer_name: submission.dealerName,
+                    location: submission.location,
+                    manager_name: submission.managerName,
+                    contact_number: submission.contactNumber,
+                    rows: submission.rows
+                }
+            ])
+            .select();
 
-    /*
-       SAVE RECORD
-       This is what makes previous records
-       appear in HO Dashboard.
-    */
+    // IF SUPABASE GIVES AN ERROR
+    if (error) {
 
+        console.error(
+            "Supabase error:",
+            error
+        );
+
+        alert(
+            "Submission failed.\n\n" +
+            error.message
+        );
+
+        return;
+    }
+
+    // ADD TO CURRENT PAGE MEMORY
     submissions.push(submission);
 
-
-    localStorage.setItem(
-        "kiaPI_submissions",
-        JSON.stringify(submissions)
-    );
-
-
-    /*
-       DOWNLOAD EXCEL
-    */
-
+    // DOWNLOAD EXCEL
     downloadSubmissionExcel(
         submission
     );
 
-
+    // REFRESH DASHBOARD
     updateDealerFilter();
-
     renderDashboard();
 
-
     alert(
-        "Submission successfully saved.\n\n" +
+        "Submission successfully saved to HO database.\n\n" +
         "Excel file has also been downloaded.\n\n" +
         "Submission ID: " +
         submission.id
     );
 
-
     clearForm();
+}
 
+async function loadSubmissionsFromSupabase() {
+
+    const { data, error } =
+        await supabaseClient
+            .from("submissions")
+            .select("*")
+            .order(
+                "submission_date",
+                {
+                    ascending: false
+                }
+            );
+
+    if (error) {
+
+        console.error(
+            "Supabase loading error:",
+            error
+        );
+
+        alert(
+            "Unable to load submission history.\n\n" +
+            error.message
+        );
+
+        return;
+    }
+
+    submissions = data.map(row => ({
+
+        id: row.id,
+
+        piDate: row.pi_date,
+
+        submissionDate:
+            row.submission_date,
+
+        dealerCode:
+            row.dealer_code,
+
+        dealerName:
+            row.dealer_name,
+
+        location:
+            row.location,
+
+        managerName:
+            row.manager_name,
+
+        contactNumber:
+            row.contact_number,
+
+        rows:
+            row.rows
+
+    }));
+
+    updateDealerFilter();
+
+    renderDashboard();
 }
 
 
